@@ -22,17 +22,15 @@ export default function GoalScreen() {
 
   return (
     <div className="screen">
-      {/* Back button */}
-      <button 
-        onClick={() => navigate('/')} 
+      <button
+        onClick={() => navigate('/')}
         style={{ background: 'none', display: 'flex', alignItems: 'center', gap: 6, color: 'var(--color-text-secondary)', marginBottom: 16, padding: '8px 0' }}
       >
         <ArrowLeft size={18} />
         <span style={{ fontSize: 14 }}>Назад</span>
       </button>
 
-      <h1 style={{ marginBottom: 8 }}>Какая цель на эту неделю?</h1>
-      <p style={{ marginBottom: 24 }}>Выберите, и я подберу продукты и рецепты под неё</p>
+      <h1 style={{ marginBottom: 20 }}>Какая цель на эту неделю?</h1>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {goals.map(({ id, label, icon: Icon, color }) => (
@@ -48,7 +46,6 @@ export default function GoalScreen() {
               border: state.goal === id ? '2px solid var(--color-primary)' : '1.5px solid var(--color-border)',
               borderRadius: 'var(--radius-lg)',
               textAlign: 'left',
-              transition: 'all 0.2s',
               minHeight: 60,
             }}
           >

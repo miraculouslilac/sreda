@@ -12,6 +12,10 @@ export default function BottomNav() {
   const navigate = useNavigate();
   const location = useLocation();
 
+  // Hide on onboarding/loading flows
+  const hideOn = ['/onboarding', '/context', '/loading'];
+  if (hideOn.includes(location.pathname)) return null;
+
   return (
     <nav style={{
       position: 'fixed',
@@ -28,7 +32,7 @@ export default function BottomNav() {
       zIndex: 1000,
     }}>
       {tabs.map(({ path, label, icon: Icon }) => {
-        const active = location.pathname === path || 
+        const active = location.pathname === path ||
           (path === '/today' && location.pathname === '/');
         return (
           <button
@@ -43,7 +47,6 @@ export default function BottomNav() {
               padding: '6px 12px',
               minWidth: 64,
               color: active ? 'var(--color-primary)' : 'var(--color-text-muted)',
-              transition: 'color 0.2s',
             }}
           >
             <Icon size={22} strokeWidth={active ? 2.2 : 1.8} />

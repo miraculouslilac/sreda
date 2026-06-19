@@ -12,15 +12,15 @@ const defaultState = {
   restrictions: [],
   cookingTime: null,
   cartGenerated: false,
+  cartProductIds: [],
   cartLinkCreated: false,
-  onboardingComplete: false,
 };
 
 function loadState() {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) return { ...defaultState, ...JSON.parse(saved) };
-  } catch (e) { /* ignore */ }
+  } catch (e) {}
   return defaultState;
 }
 
@@ -31,8 +31,8 @@ export function AppStateProvider({ children }) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }, [state]);
 
-  const updateState = (updates) => {
-    setState(prev => ({ ...prev, ...updates }));
+  const updateState = (partial) => {
+    setState(prev => ({ ...prev, ...partial }));
   };
 
   const resetState = () => {

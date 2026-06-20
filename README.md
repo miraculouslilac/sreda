@@ -15,7 +15,7 @@
 
 - Персональный ИИ-агент питания (не маркетплейс)
 - Подбор корзины под цель здоровья, ограничения и ритм жизни
-- Интеграция с каталогом ВкусВилл через MCP-адаптер (mock в demo-mode)
+- Интеграция с реальным каталогом ВкусВилл через MCP
 - Рецепты из купленных продуктов
 - Петля возврата (ежедневные рекомендации)
 
@@ -87,20 +87,20 @@ pnpm preview
 
 ---
 
-## 5. Как работает mock MCP adapter
+## 5. Как работает MCP adapter
 
 Файл: `src/services/vkusvillMcpAdapter.js`
 
-Адаптер предоставляет 4 функции, которые в demo-mode работают с mock-данными:
+Адаптер вызывает официальный stateless MCP ВкусВилла по JSON-RPC:
 
 ```javascript
-searchProducts(query, options)    // → массив товаров
-getProductDetails(productId)      // → детали товара (состав, КБЖУ)
-createCartLink(cartProducts)      // → { url, expiresAt }
-getAlternatives(productId, mode)  // → альтернативные товары
+searchProducts(query, options)          // реальные товары
+getProductDetails(productId)            // состав и КБЖУ
+createCartLink(cartProducts)            // настоящая share_basket-ссылка
+getProductAnalogs(product, mode)        // аналоги/поисковый fallback
 ```
 
-Каждая функция имеет `DEMO_MODE` флаг. Когда `DEMO_MODE = true`, возвращаются mock-данные с имитацией задержки (800ms).
+Endpoint: `https://mcp001.vkusvill.ru/mcp`. Авторизация не требуется. При сетевой ошибке генерация использует локальные demo-товары и показывает это на экране MCP Status.
 
 Файл: `src/services/sredaAgent.js`
 
@@ -117,42 +117,9 @@ generateCookingSuggestions(cart, context)   // рецепты
 
 ---
 
-## 6. Где подключать реальный MCP ВкусВилл
+## 6. Реальный MCP ВкусВилл
 
-### Шаг 1: Настроить переменные окружения
-
-```env
-VITE_VKUSVILL_MCP_URL=https://mcp.vkusvill.ru/api
-VITE_VKUSVILL_MCP_TOKEN=your_token_here
-```
-
-### Шаг 2: Изменить адаптер
-
-В файле `src/services/vkusvillMcpAdapter.js`:
-
-1. Установить `DEMO_MODE = false`
-2. Реализовать реальные вызовы MCP-инструментов:
-
-```javascript
-// vkusvill_products_search
-const response = await fetch(`${MCP_URL}/tools/vkusvill_products_search`, {
-  method: 'POST',
-  headers: { 'Authorization': `Bearer ${TOKEN}` },
-  body: JSON.stringify({ query, ...options })
-});
-
-// vkusvill_product_details
-const response = await fetch(`${MCP_URL}/tools/vkusvill_product_details`, {
-  method: 'POST',
-  body: JSON.stringify({ product_id: productId })
-});
-
-// vkusvill_cart_link_create
-const response = await fetch(`${MCP_URL}/tools/vkusvill_cart_link_create`, {
-  method: 'POST',
-  body: JSON.stringify({ products: [...] })
-});
-```
+Подключение уже реализовано в `src/services/vkusvillMcpAdapter.js`. Клиент использует методы `tools/call` и корректные аргументы официальных инструментов. Никаких `VITE_*` токенов или секретов в браузерном bundle нет.
 
 ### Справка по MCP ВкусВилл
 

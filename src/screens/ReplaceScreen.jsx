@@ -1,57 +1,84 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Check } from 'lucide-react';
-import { products, cheaperAlternatives, proteinAlternatives } from '../mockData/products';
+import { ArrowLeft, Check, LoaderCircle } from 'lucide-react';
+import { useAppState } from '../hooks/useAppState';
+import { getProductAnalogs } from '../services/vkusvillMcpAdapter';
 
 const filters = [
   { id: 'cheaper', label: 'Выгоднее' },
   { id: 'rating', label: 'Лучший рейтинг' },
-  { id: 'less_cal', label: 'Меньше калорий' },
   { id: 'more_protein', label: 'Больше белка' },
-  { id: 'no_sugar', label: 'Без лактозы / без сахара' },
 ];
 
 export default function ReplaceScreen() {
   const navigate = useNavigate();
   const { productId } = useParams();
+  const { state, setCartItems } = useAppState();
   const [activeFilter, setActiveFilter] = useState('cheaper');
+  const [alternatives, setAlternatives] = useState([]);
   const [selected, setSelected] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const original = state.cartItems.find((product) => product.id === productId);
 
-  const original = products.find(p => p.id === productId);
-  const alternatives = activeFilter === 'more_protein' ? proteinAlternatives : cheaperAlternatives;
+  useEffect(() => {
+    let cancelled = false;
+    getProductAnalogs(original, activeFilter)
+      .then((items) => {
+        if (!cancelled) setAlternatives(items.filter((item) => item.id !== original?.id).slice(0, 6));
+      })
+      .catch((requestError) => {
+        if (!cancelled) setError(requestError instanceof Error ? requestError.message : 'Не удалось найти замену');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [activeFilter, original]);
+
+  function changeFilter(filter) {
+    setLoading(true);
+    setError(null);
+    setSelected(null);
+    setActiveFilter(filter);
+  }
+
+  function replace() {
+    const replacement = alternatives.find((item) => item.id === selected);
+    if (!replacement) return;
+    setCartItems(state.cartItems.map((item) =>
+      item.id === original.id ? { ...replacement, quantity: item.quantity || 1 } : item
+    ));
+    navigate('/cart', { replace: true });
+  }
+
+  if (!original) return <div className="screen"><h1>Товар не найден</h1><button className="btn-primary" onClick={() => navigate('/cart')}>К корзине</button></div>;
 
   return (
     <div className="screen">
-      <button onClick={() => navigate(-1)} style={{ background: 'none', display: 'flex', alignItems: 'center', gap: 6, color: 'var(--color-text-secondary)', marginBottom: 16, padding: '8px 0' }}>
-        <ArrowLeft size={18} /><span style={{ fontSize: 14 }}>Назад</span>
-      </button>
-      <h1 style={{ marginBottom: 8 }}>Чем заменить?</h1>
-      {original && <p style={{ marginBottom: 16, fontSize: 14, color: 'var(--color-text-secondary)' }}>Вместо: {original.name}</p>}
-      <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 12, marginBottom: 16 }}>
-        {filters.map(f => (
-          <button key={f.id} onClick={() => setActiveFilter(f.id)} style={{ padding: '8px 14px', borderRadius: 20, fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap', background: activeFilter === f.id ? 'var(--color-primary)' : 'var(--color-white)', color: activeFilter === f.id ? 'white' : 'var(--color-text-secondary)', border: activeFilter === f.id ? 'none' : '1px solid var(--color-border)' }}>{f.label}</button>
+      <button onClick={() => navigate(-1)} className="link-button"><ArrowLeft size={18} /> Назад</button>
+      <h1>Чем заменить?</h1>
+      <p style={{ margin: '6px 0 16px' }}>Вместо: {original.name}</p>
+      <div className="filter-row">
+        {filters.map((filter) => (
+          <button key={filter.id} className={activeFilter === filter.id ? 'filter active' : 'filter'} onClick={() => changeFilter(filter.id)}>{filter.label}</button>
         ))}
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 24 }}>
-        {alternatives.map(alt => (
-          <div key={alt.id} className="card" style={{ padding: 14, border: selected === alt.id ? '2px solid var(--color-primary)' : undefined, cursor: 'pointer' }} onClick={() => setSelected(alt.id)}>
-            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-              <div style={{ width: 44, height: 44, borderRadius: 10, background: alt.image, flexShrink: 0 }} />
-              <div style={{ flex: 1 }}>
-                <p style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-text)' }}>{alt.name}</p>
-                <div style={{ display: 'flex', gap: 8, marginTop: 4, fontSize: 12, color: 'var(--color-text-muted)' }}>
-                  <span>{alt.price}&nbsp;&#8381;</span><span>{alt.weight}</span><span>{alt.kcal} ккал</span><span>Б:{alt.protein}</span>
-                </div>
-                <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
-                  {alt.tags.map(t => <span key={t} className="tag" style={{ fontSize: 10 }}>{t}</span>)}
-                </div>
-              </div>
-              {selected === alt.id && <Check size={20} color="var(--color-primary)" />}
-            </div>
-          </div>
+      {loading && <p className="status-line"><LoaderCircle size={18} className="spin" /> Ищу реальные аналоги…</p>}
+      {error && <p className="error-box">{error}</p>}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, margin: '16px 0 24px' }}>
+        {alternatives.map((product) => (
+          <button key={product.id} className={selected === product.id ? 'card alternative selected' : 'card alternative'} onClick={() => setSelected(product.id)}>
+            {product.image && <img src={product.image} alt="" className="product-thumb" />}
+            <span style={{ flex: 1, textAlign: 'left' }}>
+              <strong>{product.name}</strong>
+              <small>{product.price} ₽ · ★ {product.rating?.toFixed?.(1) || '—'}</small>
+            </span>
+            {selected === product.id && <Check size={20} color="var(--color-primary)" />}
+          </button>
         ))}
       </div>
-      <button className="btn-primary" disabled={!selected} onClick={() => navigate(-1)} style={{ opacity: selected ? 1 : 0.5 }}>Заменить</button>
+      <button className="btn-primary" disabled={!selected} onClick={replace}>Заменить товар</button>
     </div>
   );
 }

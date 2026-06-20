@@ -1,10 +1,8 @@
 import { useNavigate } from 'react-router-dom';
 import { ShoppingCart, ChefHat, RotateCcw, Target, Sparkles } from 'lucide-react';
-import { useAppState } from '../hooks/useAppState';
 
 export default function HomeScreen() {
   const navigate = useNavigate();
-  const { state } = useAppState();
 
   return (
     <div className="screen" style={{ paddingTop: 24 }}>

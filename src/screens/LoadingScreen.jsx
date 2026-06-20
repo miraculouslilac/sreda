@@ -1,109 +1,81 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppState } from '../hooks/useAppState';
+import { generateCart, generateMealPlan } from '../services/sredaAgent';
 
 const steps = [
-  { text: 'Среда анализирует запрос\u2026', duration: 1200 },
-  { text: 'Ищет продукты во ВкусВилл\u2026', duration: 1500 },
-  { text: 'Проверяет состав и КБЖУ\u2026', duration: 1200 },
-  { text: 'Собирает корзину\u2026', duration: 1000 },
-  { text: 'Готовит рецепты из выбранных продуктов\u2026', duration: 1000 },
+  'Анализирую цель и ограничения…',
+  'Ищу подходящие товары во ВкусВилл…',
+  'Сравниваю цены и рейтинг…',
+  'Собираю корзину и план питания…',
 ];
 
 export default function LoadingScreen() {
   const navigate = useNavigate();
-  const { updateState } = useAppState();
+  const { state, updateState } = useAppState();
   const [currentStep, setCurrentStep] = useState(0);
-  const [progress, setProgress] = useState(0);
+  const [error, setError] = useState(null);
+  const preferences = useMemo(() => ({
+    goal: state.goal,
+    days: state.days,
+    people: state.people,
+    budget: state.budget,
+    restrictions: state.restrictions,
+    cookingTime: state.cookingTime,
+  }), [state.budget, state.cookingTime, state.days, state.goal, state.people, state.restrictions]);
 
   useEffect(() => {
-    const totalDuration = steps.reduce((sum, s) => sum + s.duration, 0);
-    const startTime = Date.now();
+    let cancelled = false;
+    const interval = setInterval(() => {
+      setCurrentStep((step) => Math.min(step + 1, steps.length - 1));
+    }, 1100);
 
-    const progressInterval = setInterval(() => {
-      const elapsed = Date.now() - startTime;
-      setProgress(Math.min((elapsed / totalDuration) * 100, 100));
-    }, 50);
-
-    const advanceSteps = async () => {
-      for (let i = 0; i < steps.length; i++) {
-        setCurrentStep(i);
-        await new Promise(resolve => setTimeout(resolve, steps[i].duration));
+    async function run() {
+      try {
+        const [cartItems, mealPlan] = await Promise.all([
+          generateCart(preferences),
+          Promise.resolve(generateMealPlan(preferences)),
+        ]);
+        if (cancelled) return;
+        updateState({
+          cartGenerated: true,
+          cartItems,
+          mealPlan,
+          cartLink: null,
+          cartLinkCreated: false,
+          generationError: null,
+        });
+        navigate('/meal-plan', { replace: true });
+      } catch (requestError) {
+        if (cancelled) return;
+        const message = requestError instanceof Error ? requestError.message : 'Не удалось собрать корзину';
+        setError(message);
+        updateState({ generationError: message });
       }
-      clearInterval(progressInterval);
-      updateState({ cartGenerated: true });
-      navigate('/meal-plan');
-    };
+    }
 
-    advanceSteps();
-
+    run();
     return () => {
-      clearInterval(progressInterval);
+      cancelled = true;
+      clearInterval(interval);
     };
-  }, []);
+  }, [navigate, preferences, updateState]);
 
   return (
-    <div className="screen" style={{
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      minHeight: '100vh',
-      paddingBottom: 0,
-    }}>
-      {/* Animated orb */}
-      <div style={{
-        width: 80,
-        height: 80,
-        borderRadius: '50%',
-        background: 'linear-gradient(135deg, var(--color-primary) 0%, var(--color-accent) 100%)',
-        marginBottom: 32,
-        animation: 'pulse 2s ease-in-out infinite',
-        boxShadow: '0 8px 32px rgba(46, 125, 91, 0.3)',
-      }} />
-
-      {/* Current step text */}
-      <p style={{
-        fontSize: 16,
-        color: 'var(--color-text)',
-        fontWeight: 500,
-        textAlign: 'center',
-        marginBottom: 24,
-        minHeight: 24,
-      }}>
-        {steps[currentStep]?.text}
+    <div className="screen" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', paddingBottom: 0 }}>
+      <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'linear-gradient(135deg, var(--color-primary), var(--color-accent))', marginBottom: 32, animation: 'pulse 2s ease-in-out infinite', boxShadow: '0 8px 32px rgba(46, 125, 91, 0.3)' }} />
+      <p style={{ fontSize: 16, color: error ? 'var(--color-danger)' : 'var(--color-text)', fontWeight: 500, textAlign: 'center', marginBottom: 24, minHeight: 48 }}>
+        {error || steps[currentStep]}
       </p>
-
-      {/* Progress bar */}
-      <div style={{ width: '80%', maxWidth: 240 }}>
-        <div style={{
-          height: 4,
-          background: 'var(--color-border)',
-          borderRadius: 2,
-          overflow: 'hidden'
-        }}>
-          <div style={{
-            height: '100%',
-            width: `${progress}%`,
-            background: 'var(--color-primary)',
-            borderRadius: 2,
-            transition: 'width 0.1s linear'
-          }} />
+      {error ? (
+        <button className="btn-primary" onClick={() => navigate('/context')}>Вернуться и попробовать ещё раз</button>
+      ) : (
+        <div style={{ display: 'flex', gap: 6 }}>
+          {steps.map((_, index) => (
+            <div key={index} style={{ width: 7, height: 7, borderRadius: '50%', background: index <= currentStep ? 'var(--color-primary)' : 'var(--color-border)' }} />
+          ))}
         </div>
-      </div>
-
-      {/* Step dots */}
-      <div style={{ display: 'flex', gap: 6, marginTop: 20 }}>
-        {steps.map((_, i) => (
-          <div key={i} style={{
-            width: 6,
-            height: 6,
-            borderRadius: '50%',
-            background: i <= currentStep ? 'var(--color-primary)' : 'var(--color-border)',
-            transition: 'background 0.3s',
-          }} />
-        ))}
-      </div>
+      )}
     </div>
   );
 }

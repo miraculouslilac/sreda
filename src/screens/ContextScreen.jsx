@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { Target, Calendar, Clock, AlertCircle, Sparkles, ArrowRight } from 'lucide-react';
 import { useAppState } from '../hooks/useAppState';
+import { formatDays } from '../utils/format';
 
 const goalLabels = {
   energy: 'Больше энергии',
@@ -50,7 +51,7 @@ export default function ContextScreen() {
 
   const contextCards = [
     { icon: Target, label: 'Цель', value: goalLabels[state.goal] || 'Не выбрана' },
-    { icon: Calendar, label: 'Рацион', value: `${state.days || 5} дней` },
+    { icon: Calendar, label: 'Рацион', value: formatDays(state.days) },
     { icon: Clock, label: 'Время готовки', value: cookingLabels[state.cookingTime] || 'до 20 минут' },
     { icon: AlertCircle, label: 'Ограничения', value: (state.restrictions || []).map(r => restrictionLabels[r]).join(', ') || 'нет' },
     { icon: Sparkles, label: 'Фокус недели', value: goalFocus[state.goal] || goalFocus.healthy },

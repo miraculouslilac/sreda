@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { ChefHat, Bell, MessageCircle } from 'lucide-react';
+import { ChefHat, Bell } from 'lucide-react';
 import { recipes } from '../mockData/recipes';
 
 const quickQuestions = [

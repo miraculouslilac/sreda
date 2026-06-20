@@ -3,20 +3,22 @@ import { useNavigate } from 'react-router-dom';
 import { ChevronDown, ChevronUp, Clock, ArrowLeft } from 'lucide-react';
 import { useAppState } from '../hooks/useAppState';
 import { mealPlans, mealTypeLabels } from '../mockData/mealPlan';
+import { optimizeCart } from '../services/sredaAgent';
+import { formatDays } from '../utils/format';
 
 export default function MealPlanScreen() {
   const navigate = useNavigate();
-  const { state } = useAppState();
+  const { state, setCartItems } = useAppState();
   const [expandedDay, setExpandedDay] = useState(1);
   const days = state.days || 5;
-  const plan = mealPlans.slice(0, days);
+  const plan = state.mealPlan?.length ? state.mealPlan : mealPlans.slice(0, days);
 
   return (
     <div className="screen">
       <button onClick={() => navigate('/')} style={{ background: 'none', display: 'flex', alignItems: 'center', gap: 6, color: 'var(--color-text-secondary)', marginBottom: 16, padding: '8px 0' }}>
         <ArrowLeft size={18} /><span style={{ fontSize: 14 }}>Назад</span>
       </button>
-      <h1 style={{ marginBottom: 20 }}>{"План на " + days + " дней готов"}</h1>
+      <h1 style={{ marginBottom: 20 }}>{`План на ${formatDays(days)} готов`}</h1>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 24 }}>
         {plan.map(({ day, meals }) => (
           <div key={day} className="card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -49,8 +51,8 @@ export default function MealPlanScreen() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <button className="btn-primary" onClick={() => navigate('/cart')}>Посмотреть корзину</button>
         <button className="btn-outline" onClick={() => navigate('/loading')}>Изменить план</button>
-        <button className="btn-outline" onClick={() => {}}>Сделать проще</button>
-        <button className="btn-outline" onClick={() => {}}>Сделать дешевле</button>
+        <button className="btn-outline" onClick={() => navigate('/goal')}>Изменить параметры</button>
+        <button className="btn-outline" onClick={() => { setCartItems(optimizeCart(state.cartItems, 'cheaper')); navigate('/cart'); }}>Сделать дешевле</button>
       </div>
     </div>
   );

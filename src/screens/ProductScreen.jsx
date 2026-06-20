@@ -1,56 +1,79 @@
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Check, RefreshCw, Trash2 } from 'lucide-react';
-import { products } from '../mockData/products';
+import { ArrowLeft, Check, ExternalLink, LoaderCircle, RefreshCw, Trash2 } from 'lucide-react';
 import { useAppState } from '../hooks/useAppState';
+import { getProductDetails } from '../services/vkusvillMcpAdapter';
 
-const goalLabels = { energy: 'Больше энергии', weight_loss: 'Похудение', sugar_control: 'Контроль сахара', sport: 'Спорт и восстановление', healthy: 'Просто здоровая корзина', custom: 'Своя цель' };
+const goalLabels = {
+  energy: 'Больше энергии',
+  weight_loss: 'Похудение',
+  sugar_control: 'Контроль сахара',
+  sport: 'Спорт и восстановление',
+  healthy: 'Здоровая корзина',
+  custom: 'Своя цель',
+};
 
 export default function ProductScreen() {
   const navigate = useNavigate();
   const { productId } = useParams();
-  const { state } = useAppState();
-  const product = products.find(p => p.id === productId);
-  if (!product) return <div className="screen"><p>Товар не найден</p><button className="btn-outline" onClick={() => navigate(-1)}>Назад</button></div>;
+  const { state, setCartItems } = useAppState();
+  const baseProduct = state.cartItems.find((product) => product.id === productId);
+  const [product, setProduct] = useState(baseProduct);
+  const [loading, setLoading] = useState(Boolean(baseProduct?.source === 'mcp'));
+
+  useEffect(() => {
+    if (!baseProduct || baseProduct.source !== 'mcp') return;
+    let cancelled = false;
+    getProductDetails(baseProduct.id, baseProduct)
+      .then((details) => {
+        if (!cancelled) setProduct(details);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [baseProduct]);
+
+  function remove() {
+    setCartItems(state.cartItems.filter((item) => item.id !== productId));
+    navigate('/cart', { replace: true });
+  }
+
+  if (!product) return <div className="screen"><h1>Товар не найден</h1><button className="btn-primary" onClick={() => navigate('/cart')}>К корзине</button></div>;
+
+  const macros = [
+    ['ккал', product.kcal],
+    ['белки', product.protein],
+    ['жиры', product.fat],
+    ['углеводы', product.carbs],
+  ];
 
   return (
     <div className="screen">
-      <button onClick={() => navigate(-1)} style={{ background: 'none', display: 'flex', alignItems: 'center', gap: 6, color: 'var(--color-text-secondary)', marginBottom: 16, padding: '8px 0' }}>
-        <ArrowLeft size={18} /><span style={{ fontSize: 14 }}>Назад</span>
-      </button>
-      <div style={{ width: '100%', height: 160, borderRadius: 16, background: product.image, marginBottom: 20 }} />
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-        <h1 style={{ fontSize: 20, flex: 1 }}>{product.name}</h1>
-        <span style={{ fontSize: 20, fontWeight: 700, whiteSpace: 'nowrap', marginLeft: 12 }}>{product.price}&nbsp;&#8381;</span>
+      <button onClick={() => navigate(-1)} className="link-button"><ArrowLeft size={18} /> Назад</button>
+      {product.image ? <img src={product.image} alt={product.name} className="product-hero" /> : <div className="product-hero product-placeholder" />}
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
+        <h1>{product.name}</h1>
+        <strong style={{ fontSize: 20, whiteSpace: 'nowrap' }}>{product.price} ₽</strong>
       </div>
-      <p style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 16 }}>{product.weight}</p>
+      <p style={{ marginBottom: 16 }}>{product.weight} · ★ {product.rating?.toFixed?.(1) || '—'}</p>
+      {loading && <p className="status-line"><LoaderCircle size={16} className="spin" /> Загружаю состав и КБЖУ…</p>}
       <div className="card" style={{ marginBottom: 12 }}>
-        <p style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 4, fontWeight: 500, textTransform: 'uppercase' }}>Состав</p>
-        <p style={{ fontSize: 14, color: 'var(--color-text)' }}>{product.composition}</p>
+        <small className="eyebrow">Состав</small>
+        <p>{product.composition || product.description || 'Состав уточняется на странице товара'}</p>
       </div>
-      <div className="card" style={{ marginBottom: 12 }}>
-        <p style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 8, fontWeight: 500, textTransform: 'uppercase' }}>КБЖУ на 100 г</p>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, textAlign: 'center' }}>
-          <div><p style={{ fontSize: 18, fontWeight: 700 }}>{product.kcal}</p><p style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>ккал</p></div>
-          <div><p style={{ fontSize: 18, fontWeight: 700, color: 'var(--color-primary)' }}>{product.protein}</p><p style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>белки</p></div>
-          <div><p style={{ fontSize: 18, fontWeight: 700, color: 'var(--color-warning)' }}>{product.fat}</p><p style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>жиры</p></div>
-          <div><p style={{ fontSize: 18, fontWeight: 700, color: 'var(--color-accent)' }}>{product.carbs}</p><p style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>углеводы</p></div>
-        </div>
+      <div className="card macro-grid" style={{ marginBottom: 12 }}>
+        {macros.map(([label, value]) => <div key={label}><strong>{value ?? '—'}</strong><small>{label}</small></div>)}
       </div>
-      <div className="card" style={{ marginBottom: 12, background: 'var(--color-primary-light)', border: 'none' }}>
-        <p style={{ fontSize: 12, color: 'var(--color-primary)', marginBottom: 4, fontWeight: 500, textTransform: 'uppercase' }}>Почему агент выбрал</p>
-        <p style={{ fontSize: 14, color: 'var(--color-text)', fontStyle: 'italic' }}>{product.reason}</p>
+      <div className="card" style={{ marginBottom: 12, background: 'var(--color-primary-light)' }}>
+        <small className="eyebrow">Почему Среда выбрала</small>
+        <p>{product.reason || `Подходит под цель «${goalLabels[state.goal] || 'Здоровая корзина'}».`}</p>
       </div>
-      <div className="card" style={{ marginBottom: 12 }}>
-        <p style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 4, fontWeight: 500, textTransform: 'uppercase' }}>Подходит под цель</p>
-        <p style={{ fontSize: 14, color: 'var(--color-text)' }}>{goalLabels[state.goal] || 'Здоровая корзина'}</p>
-      </div>
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 24 }}>
-        {product.tags.map(tag => (<span key={tag} className="tag">{tag}</span>))}
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {product.url && <a className="btn-outline" href={product.url} target="_blank" rel="noreferrer"><ExternalLink size={17} /> Карточка во ВкусВилле</a>}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
         <button className="btn-primary" onClick={() => navigate(-1)}><Check size={18} /> Оставить</button>
-        <button className="btn-secondary" onClick={() => navigate('/replace/' + product.id)}><RefreshCw size={18} /> Заменить</button>
-        <button className="btn-outline" onClick={() => navigate(-1)} style={{ color: 'var(--color-danger)', borderColor: '#FEE2E2' }}><Trash2 size={18} /> Удалить</button>
+        <button className="btn-secondary" onClick={() => navigate(`/replace/${product.id}`)}><RefreshCw size={18} /> Заменить</button>
+        <button className="btn-outline danger-text" onClick={remove}><Trash2 size={18} /> Удалить</button>
       </div>
     </div>
   );

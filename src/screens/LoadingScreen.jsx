@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppState } from '../hooks/useAppState';
-import { generateCart, generateMealPlan } from '../services/sredaAgent';
+import { generateCart, generateMealPlan, generateRecipes } from '../services/sredaAgent';
 
 const steps = [
   'Анализирую цель и ограничения…',
@@ -32,15 +32,15 @@ export default function LoadingScreen() {
 
     async function run() {
       try {
-        const [cartItems, mealPlan] = await Promise.all([
-          generateCart(preferences),
-          Promise.resolve(generateMealPlan(preferences)),
-        ]);
+        const cartItems = await generateCart(preferences);
+        const recipes = generateRecipes(preferences, cartItems);
+        const mealPlan = generateMealPlan(preferences, cartItems);
         if (cancelled) return;
         updateState({
           cartGenerated: true,
           cartItems,
           mealPlan,
+          recipes,
           cartLink: null,
           cartLinkCreated: false,
           generationError: null,

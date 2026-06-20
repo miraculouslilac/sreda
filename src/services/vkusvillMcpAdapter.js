@@ -68,6 +68,7 @@ function normalizeProduct(item, category = 'other', reason = '') {
     reason,
     image: item.images?.[0]?.medium || item.images?.[0]?.small || null,
     url: item.url || null,
+    catalogCategories: (item.category || []).map((entry) => entry.name),
     source: 'mcp',
   };
 }

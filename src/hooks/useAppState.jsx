@@ -14,6 +14,7 @@ const defaultState = {
   cartGenerated: false,
   cartItems: [],
   mealPlan: [],
+  recipes: [],
   cartLink: null,
   cartLinkCreated: false,
   generationError: null,

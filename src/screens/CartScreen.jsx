@@ -67,7 +67,7 @@ export default function CartScreen() {
                 {product.image ? <img src={product.image} alt="" className="product-thumb" /> : <div className="product-thumb product-placeholder" />}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <button className="product-title" onClick={() => navigate(`/product/${product.id}`)}>{product.name}</button>
-                  <p>{product.weight} · ★ {product.rating?.toFixed?.(1) || '—'}</p>
+                  <p>{product.weight} · {product.quantity || 1} уп. · ★ {product.rating?.toFixed?.(1) || '—'}</p>
                   <p style={{ fontWeight: 700, color: 'var(--color-text)' }}>{product.price} ₽</p>
                   <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                     <button className="mini-button" onClick={() => navigate(`/replace/${product.id}`)}><RefreshCw size={13} /> Заменить</button>

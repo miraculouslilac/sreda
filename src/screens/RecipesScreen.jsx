@@ -45,6 +45,18 @@ export default function RecipesScreen() {
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
                   {recipe.productNames.map((name) => <span key={name} className="tag" style={{ fontSize: 11 }}>{name}</span>)}
                 </div>
+                {recipe.ingredients?.length > 0 && (
+                  <>
+                    <p className="eyebrow">Все ингредиенты</p>
+                    <ul style={{ paddingLeft: 18, marginBottom: 14 }}>
+                      {recipe.ingredients.map((ingredient) => (
+                        <li key={`${ingredient.name}-${ingredient.quantity}`} style={{ fontSize: 14, marginBottom: 4 }}>
+                          {ingredient.name} — {ingredient.quantity}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
                 <p className="eyebrow">Шаги приготовления</p>
                 <ol style={{ paddingLeft: 18, marginBottom: 16 }}>
                   {recipe.steps.map((step, index) => <li key={step} style={{ fontSize: 14, marginBottom: 6 }}>{index + 1}. {step}</li>)}

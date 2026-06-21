@@ -1,5 +1,6 @@
 import {
   getFallbackProducts,
+  searchRecipes,
   searchProducts,
   setMcpError,
 } from './vkusvillMcpAdapter';
@@ -125,8 +126,17 @@ const restrictionLabels = {
   vegetarian: 'вегетарианский рацион',
 };
 
+const supportingSearches = [
+  ['помидоры свежие', 'vegetables'],
+  ['огурцы свежие', 'vegetables'],
+  ['зелень свежая', 'vegetables'],
+  ['морковь свежая', 'vegetables'],
+  ['масло оливковое', 'snacks'],
+  ['лук репчатый', 'vegetables'],
+];
+
 function adaptSearches(searches, preferences) {
-  let result = searches.map(([query, category]) => ({ query, category }));
+  let result = [...searches, ...supportingSearches].map(([query, category]) => ({ query, category }));
   const restrictions = preferences.restrictions || [];
 
   if (restrictions.includes('vegetarian')) {
@@ -159,6 +169,9 @@ function adaptSearches(searches, preferences) {
       { query: 'гречка готовая', category: 'grains' },
       { query: restrictions.includes('no_lactose') ? 'йогурт растительный' : 'творог готовый завтрак', category: 'dairy' },
       { query: 'готовый боул полезный', category: 'ready' },
+      { query: 'овощи нарезанные готовые', category: 'vegetables' },
+      { query: 'салат листовой мытый', category: 'vegetables' },
+      { query: 'орехи порционные', category: 'snacks' },
     ];
   } else if (preferences.cookingTime === '10') {
     result = result.map((item) =>
@@ -203,7 +216,7 @@ export function buildNutritionContext(preferences) {
     meals: adaptMeals(profile.meals, preferences),
     searches: adaptSearches(profile.searches, preferences),
     peopleMultiplier,
-    targetItems: Math.min(18, Math.max(8, days + 5)),
+    targetItems: Math.min(20, Math.max(12, days * 2 + 4)),
   };
 }
 
@@ -273,6 +286,15 @@ function scoreProduct(product, context, search) {
   return score;
 }
 
+function quantityFor(category, context) {
+  const portions = context.peopleMultiplier * Number(context.days || 5);
+  if (category === 'protein') return Math.max(1, Math.ceil(portions / 4));
+  if (category === 'vegetables') return Math.max(1, Math.ceil(portions / 5));
+  if (category === 'grains') return Math.max(1, Math.ceil(portions / 8));
+  if (category === 'dairy' || category === 'snacks') return Math.max(1, Math.ceil(portions / 6));
+  return Math.max(1, Math.ceil(portions / 7));
+}
+
 function interleave(groups, limit) {
   const result = [];
   const maxLength = Math.max(...groups.map((group) => group.length), 0);
@@ -293,6 +315,8 @@ export async function generateCart(preferences) {
           category: search.category,
           sort: context.budget === '3000' ? 'price_asc' : 'rating',
           reason: reasonFor(search, context),
+          pages: context.budget === '3000' ? 3 : 2,
+          vvonly: 0,
         });
         return results
           .filter((product) => isRelevant(product, search.query))
@@ -303,11 +327,11 @@ export async function generateCart(preferences) {
               ...product,
               category,
               categoryLabel: categoryLabels[category],
-              quantity: context.peopleMultiplier > 1 ? Math.min(context.peopleMultiplier, 3) : 1,
+              quantity: quantityFor(category, context),
             };
           })
           .sort((a, b) => scoreProduct(b, context, search) - scoreProduct(a, context, search))
-          .slice(0, 3);
+          .slice(0, 4);
       })
     );
     const uniqueGroups = groups.map((group) => [...new Map(group.map((product) => [product.id, product])).values()]);
@@ -335,7 +359,95 @@ function productNames(cart, categories) {
     .map((product) => product.name);
 }
 
-export function generateRecipes(preferences, cart) {
+function recipeFilters(preferences) {
+  const restrictions = preferences.restrictions || [];
+  const excludeAllergenIds = [];
+  if (restrictions.includes('no_gluten')) excludeAllergenIds.push(305747);
+  if (restrictions.includes('no_lactose')) excludeAllergenIds.push(305748);
+  if (restrictions.includes('no_sugar')) excludeAllergenIds.push(305752);
+  const categoryId = restrictions.includes('vegetarian')
+    ? 344
+    : preferences.goal === 'sport'
+      ? 2368
+      : preferences.goal === 'weight_loss'
+        ? 2370
+        : preferences.goal === 'sugar_control'
+          ? 2372
+          : 334;
+  const cookingTimeId = preferences.cookingTime === '20' || preferences.cookingTime === '10'
+    ? 397967
+    : preferences.cookingTime === '40'
+      ? 305736
+      : 0;
+  return { excludeAllergenIds, categoryId, cookingTimeId };
+}
+
+function recipeQueries(cart) {
+  const protein = firstProduct(cart, 'protein');
+  const grain = firstProduct(cart, 'grains');
+  const vegetable = firstProduct(cart, 'vegetables');
+  const queries = [
+    [protein, grain].filter(Boolean).map((product) => product.name.split(/[",]/)[0]).join(' '),
+    [protein, vegetable].filter(Boolean).map((product) => product.name.split(/[",]/)[0]).join(' '),
+    vegetable?.name.split(/[",]/)[0] || '',
+    '',
+  ];
+  return [...new Set(queries.filter((query, index) => query || index === queries.length - 1))];
+}
+
+function recipeMatchesCart(recipe, cart) {
+  const cartText = cart.map((product) => product.name.toLowerCase()).join(' ');
+  const meaningful = recipe.ingredients
+    .map((ingredient) => ingredient.name.toLowerCase().split(/\s+/)[0])
+    .filter((word) => word.length >= 4);
+  return meaningful.filter((word) => cartText.includes(word.slice(0, 5))).length;
+}
+
+function recipeProductNames(recipe, cart) {
+  const names = recipe.ingredients.map((ingredient) => ingredient.name.toLowerCase());
+  return cart
+    .filter((product) => names.some((name) => {
+      const stem = name.split(/\s+/)[0]?.slice(0, 5);
+      return stem && product.name.toLowerCase().includes(stem);
+    }))
+    .map((product) => product.name)
+    .slice(0, 5);
+}
+
+function normalizeMcpRecipe(recipe, cart, context) {
+  const productNamesInCart = recipeProductNames(recipe, cart);
+  return {
+    ...recipe,
+    productNames: productNamesInCart.length
+      ? productNamesInCart
+      : recipe.ingredients.slice(0, 5).map((ingredient) => `${ingredient.name} — ${ingredient.quantity}`),
+    products: cart.filter((product) => productNamesInCart.includes(product.name)).map((product) => product.id),
+    tags: [context.focus, recipe.complexity || 'рецепт ВкусВилла'],
+    why: `Реальный рецепт ВкусВилла под цель «${context.focus}». Совпадает с ${recipeMatchesCart(recipe, cart)} ингредиентами текущей корзины.`,
+  };
+}
+
+export async function generateRecipes(preferences, cart) {
+  const context = buildNutritionContext(preferences);
+  const filters = recipeFilters(preferences);
+  try {
+    const groups = await Promise.all(
+      recipeQueries(cart).map((query) => searchRecipes(query, filters))
+    );
+    const recipes = [...new Map(groups.flat().map((recipe) => [recipe.id, recipe])).values()]
+      .sort((a, b) => recipeMatchesCart(b, cart) - recipeMatchesCart(a, cart))
+      .filter((recipe) => recipeMatchesCart(recipe, cart) > 0)
+      .slice(0, 8)
+      .map((recipe) => normalizeMcpRecipe(recipe, cart, context));
+    if (recipes.length >= 3) return recipes;
+  } catch {
+    // The deterministic fallback below keeps the flow usable.
+  }
+
+  return generateFallbackRecipes(preferences, cart);
+}
+
+function generateFallbackRecipes(preferences, cart) {
   const context = buildNutritionContext(preferences);
   const protein = firstProduct(cart, 'protein');
   const vegetables = firstProduct(cart, 'vegetables');
@@ -403,18 +515,16 @@ export function generateRecipes(preferences, cart) {
     });
 }
 
-export function generateMealPlan(preferences, cart) {
-  const recipes = generateRecipes(preferences, cart);
-  const context = buildNutritionContext(preferences);
+export function generateMealPlan(preferences, cart, recipes) {
   const days = Number(preferences.days || 5);
+  const availableRecipes = recipes?.length ? recipes : generateFallbackRecipes(preferences, cart);
   return Array.from({ length: days }, (_, index) => ({
     day: index + 1,
     meals: ['breakfast', 'lunch', 'dinner', 'snack'].map((type, mealIndex) => {
-      const recipe = recipes[mealIndex % recipes.length];
-      const alternativeIndex = index % 2;
+      const recipe = availableRecipes[(index * 4 + mealIndex) % availableRecipes.length];
       return {
         type,
-        name: context.meals[type][alternativeIndex] || recipe.name,
+        name: recipe.name,
         time: recipe.time,
         kcal: recipe.kcal,
         protein: recipe.protein,

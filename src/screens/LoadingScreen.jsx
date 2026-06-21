@@ -33,8 +33,8 @@ export default function LoadingScreen() {
     async function run() {
       try {
         const cartItems = await generateCart(preferences);
-        const recipes = generateRecipes(preferences, cartItems);
-        const mealPlan = generateMealPlan(preferences, cartItems);
+        const recipes = await generateRecipes(preferences, cartItems);
+        const mealPlan = generateMealPlan(preferences, cartItems, recipes);
         if (cancelled) return;
         updateState({
           cartGenerated: true,

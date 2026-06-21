@@ -108,15 +108,59 @@ async function callTool(name, args) {
 }
 
 export async function searchProducts(query, options = {}) {
-  const data = await callTool('vkusvill_products_search', {
-    q: query,
-    page: options.page || 1,
-    sort: options.sort || 'rating',
-    vvonly: options.vvonly ?? 1,
-  });
-  return (data.items || []).map((item) =>
-    normalizeProduct(item, options.category, options.reason)
+  const pageCount = Math.max(1, Math.min(options.pages || 1, 3));
+  const pages = await Promise.all(
+    Array.from({ length: pageCount }, (_, index) => callTool('vkusvill_products_search', {
+      q: query,
+      page: (options.page || 1) + index,
+      sort: options.sort || 'rating',
+      vvonly: options.vvonly ?? 0,
+    }))
   );
+  return pages.flatMap((data) => (data.items || []).map((item) =>
+    normalizeProduct(item, options.category, options.reason)
+  ));
+}
+
+function normalizeRecipe(item) {
+  return {
+    id: String(item.id),
+    name: stripHtml(item.name),
+    description: stripHtml(item.description),
+    url: item.url,
+    image: item.image,
+    portions: Number(item.portions || 1),
+    time: item.cooking_time?.name || 'Время не указано',
+    complexity: item.complexity?.name || null,
+    ingredients: (item.ingredients || []).map((ingredient) => ({
+      name: stripHtml(ingredient.name),
+      quantity: stripHtml(ingredient.quantity),
+    })),
+    productIds: (item.products_id || []).map(Number),
+    steps: (item.steps || []).map((step) => stripHtml(step.text)),
+    allergens: (item.allergens || []).map((allergen) => allergen.name),
+    kcal: Number(item.nutritional?.calories || 0),
+    protein: Number(item.nutritional?.proteins || 0),
+    fat: Number(item.nutritional?.fats || 0),
+    carbs: Number(item.nutritional?.carbs || 0),
+    categories: (item.sections || []).map((section) => section.name),
+    source: 'mcp',
+  };
+}
+
+export async function searchRecipes(query, options = {}) {
+  const data = await callTool('vkusvill_recipes', {
+    sort: options.sort || 'popularity',
+    page: options.page || 1,
+    q: query || '',
+    id_feature_filter: options.featureId || 0,
+    id_cooking_time_filter: options.cookingTimeId || 0,
+    id_cooking_method_filter: options.cookingMethodId || 0,
+    id_complexity_filter: options.complexityId || 0,
+    id_category_filter: options.categoryId || 0,
+    id_exclude_allergens_filter: options.excludeAllergenIds || [],
+  });
+  return (data.items || []).map(normalizeRecipe);
 }
 
 export async function getProductDetails(productId, baseProduct = null) {

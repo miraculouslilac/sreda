@@ -517,11 +517,38 @@ function generateFallbackRecipes(preferences, cart) {
 
 export function generateMealPlan(preferences, cart, recipes) {
   const days = Number(preferences.days || 5);
-  const availableRecipes = recipes?.length ? recipes : generateFallbackRecipes(preferences, cart);
-  return Array.from({ length: days }, (_, index) => ({
-    day: index + 1,
-    meals: ['breakfast', 'lunch', 'dinner', 'snack'].map((type, mealIndex) => {
-      const recipe = availableRecipes[(index * 4 + mealIndex) % availableRecipes.length];
+  const fallbackRecipes = generateFallbackRecipes(preferences, cart);
+  const availableRecipes = [...(recipes || []), ...fallbackRecipes]
+    .filter((recipe, index, all) => {
+      const key = String(recipe.id || recipe.name).trim().toLowerCase();
+      return key && all.findIndex((candidate) => (
+        String(candidate.id || candidate.name).trim().toLowerCase() === key
+      )) === index;
+    });
+  const mealTypes = ['breakfast', 'lunch', 'dinner', 'snack'];
+  const previousRecipeByMeal = new Map();
+
+  return Array.from({ length: days }, (_, dayIndex) => {
+    const usedToday = new Set();
+    const meals = mealTypes.map((type, mealIndex) => {
+      const stride = Math.max(1, Math.ceil(availableRecipes.length / mealTypes.length));
+      const startIndex = (dayIndex + mealIndex * stride) % availableRecipes.length;
+      const previousKey = previousRecipeByMeal.get(type);
+      let recipe = availableRecipes[startIndex];
+
+      for (let offset = 0; offset < availableRecipes.length; offset += 1) {
+        const candidate = availableRecipes[(startIndex + offset) % availableRecipes.length];
+        const candidateKey = String(candidate.id || candidate.name).trim().toLowerCase();
+        if (!usedToday.has(candidateKey) && candidateKey !== previousKey) {
+          recipe = candidate;
+          break;
+        }
+      }
+
+      const recipeKey = String(recipe.id || recipe.name).trim().toLowerCase();
+      usedToday.add(recipeKey);
+      previousRecipeByMeal.set(type, recipeKey);
+
       return {
         type,
         name: recipe.name,
@@ -532,8 +559,13 @@ export function generateMealPlan(preferences, cart, recipes) {
         carbs: recipe.carbs,
         tags: recipe.tags,
       };
-    }),
-  }));
+    });
+
+    return {
+      day: dayIndex + 1,
+      meals,
+    };
+  });
 }
 
 export function optimizeCart(cart, mode) {

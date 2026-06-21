@@ -386,10 +386,16 @@ function recipeQueries(cart) {
   const protein = firstProduct(cart, 'protein');
   const grain = firstProduct(cart, 'grains');
   const vegetable = firstProduct(cart, 'vegetables');
+  const ingredientQueries = cart
+    .filter((product) => ['protein', 'grains', 'vegetables', 'dairy', 'snacks'].includes(product.category))
+    .map((product) => product.name.split(/[",]/)[0])
+    .filter(Boolean)
+    .slice(0, 4);
   const queries = [
     [protein, grain].filter(Boolean).map((product) => product.name.split(/[",]/)[0]).join(' '),
     [protein, vegetable].filter(Boolean).map((product) => product.name.split(/[",]/)[0]).join(' '),
     vegetable?.name.split(/[",]/)[0] || '',
+    ...ingredientQueries,
     '',
   ];
   return [...new Set(queries.filter((query, index) => query || index === queries.length - 1))];
@@ -430,68 +436,101 @@ function normalizeMcpRecipe(recipe, cart, context) {
 export async function generateRecipes(preferences, cart) {
   const context = buildNutritionContext(preferences);
   const filters = recipeFilters(preferences);
+  const targetCount = Number(preferences.days || 5) * 4;
+  const fallbackRecipes = generateFallbackRecipes(preferences, cart, targetCount);
   try {
+    const queries = recipeQueries(cart);
     const groups = await Promise.all(
-      recipeQueries(cart).map((query) => searchRecipes(query, filters))
+      queries.flatMap((query) => query
+        ? [searchRecipes(query, { ...filters, page: 1 })]
+        : [1, 2, 3].map((page) => searchRecipes('', { ...filters, page }))
+      )
     );
-    const recipes = [...new Map(groups.flat().map((recipe) => [recipe.id, recipe])).values()]
+    const mcpRecipes = [...new Map(groups.flat().map((recipe) => [recipe.id, recipe])).values()]
       .sort((a, b) => recipeMatchesCart(b, cart) - recipeMatchesCart(a, cart))
       .filter((recipe) => recipeMatchesCart(recipe, cart) > 0)
-      .slice(0, 8)
       .map((recipe) => normalizeMcpRecipe(recipe, cart, context));
-    if (recipes.length >= 3) return recipes;
+
+    return [...mcpRecipes, ...fallbackRecipes]
+      .filter((recipe, index, all) => {
+        const key = String(recipe.name).trim().toLowerCase();
+        return key && all.findIndex((candidate) => (
+          String(candidate.name).trim().toLowerCase() === key
+        )) === index;
+      })
+      .slice(0, targetCount);
   } catch {
     // The deterministic fallback below keeps the flow usable.
   }
 
-  return generateFallbackRecipes(preferences, cart);
+  return fallbackRecipes;
 }
 
-function generateFallbackRecipes(preferences, cart) {
+function generateFallbackRecipes(preferences, cart, targetCount = Number(preferences.days || 5) * 4) {
   const context = buildNutritionContext(preferences);
-  const protein = firstProduct(cart, 'protein');
-  const vegetables = firstProduct(cart, 'vegetables');
-  const grain = firstProduct(cart, 'grains');
-  const dairy = firstProduct(cart, 'dairy');
-  const snack = firstProduct(cart, 'snacks') || firstProduct(cart, 'ready');
   const quick = preferences.cookingTime === '10' || preferences.cookingTime === 'ready';
   const cookingTime = quick ? '8–10 мин' : preferences.cookingTime === '40' ? '30–40 мин' : '15–20 мин';
-  const names = context.meals;
-  const vegetarianWithEggs = (preferences.restrictions || []).includes('vegetarian')
-    && protein
-    && /яйц/.test(protein.name.toLowerCase())
-    && !/тофу/.test(protein.name.toLowerCase());
-  const lunchName = vegetarianWithEggs ? 'Яйца с крупой и овощами' : names.lunch[0];
-  const dinnerName = vegetarianWithEggs ? 'Овощи с яйцом и зеленью' : names.dinner[0];
-
-  const templates = [
-    {
-      name: names.breakfast[0],
-      products: [protein, vegetables].filter(Boolean),
-      steps: quick
-        ? ['Подготовьте продукты', 'Соедините или разогрейте компоненты', 'Добавьте зелень и подавайте']
-        : ['Подготовьте белковую основу', 'Добавьте овощи', 'Готовьте до готовности и подавайте'],
-      type: 'breakfast',
-    },
-    {
-      name: lunchName,
-      products: [protein, grain, vegetables].filter(Boolean),
-      steps: ['Приготовьте или разогрейте крупу', 'Добавьте белковый продукт', 'Дополните овощами и специями'],
-      type: 'lunch',
-    },
-    {
-      name: dinnerName,
-      products: [protein, vegetables].filter(Boolean),
-      steps: ['Нарежьте компоненты', quick ? 'Соберите блюдо без долгой готовки' : 'Запеките или потушите до готовности', 'Подавайте тёплым'],
-      type: 'dinner',
-    },
-    {
-      name: names.snack[0],
-      products: [dairy, snack].filter(Boolean),
-      steps: ['Отмерьте порцию', 'Соедините компоненты', 'Уберите остаток на следующий перекус'],
-      type: 'snack',
-    },
-  ];
+  const byCategory = (category) => cart.filter((product) => product.category === category);
+  const proteins = byCategory('protein');
+  const vegetables = byCategory('vegetables');
+  const grains = byCategory('grains');
+  const dairy = byCategory('dairy');
+  const snacks = [...byCategory('snacks'), ...byCategory('ready')];
+  const pick = (items, index) => items.length ? items[index % items.length] : null;
+  const mealNames = {
+    breakfast: [
+      ...context.meals.breakfast,
+      'Тёплый белковый завтрак с овощами',
+      'Завтрак-боул с крупой и зеленью',
+      'Овощной скрэмбл с белковой основой',
+      'Сытный завтрак с крупой',
+      'Лёгкий завтрак с овощами',
+    ],
+    lunch: [
+      ...context.meals.lunch,
+      'Тёплый боул с крупой и овощами',
+      'Белковая тарелка с сезонными овощами',
+      'Крупа с овощами и белковой основой',
+      'Сытный салат с крупой',
+      'Домашний обед из продуктов корзины',
+    ],
+    dinner: [
+      ...context.meals.dinner,
+      'Запечённые овощи с белковой основой',
+      'Лёгкий ужин с овощами и зеленью',
+      'Тёплый салат с белком',
+      'Овощное рагу с белковой основой',
+      'Белковое блюдо с сезонным гарниром',
+    ],
+    snack: [
+      ...context.meals.snack,
+      'Овощные палочки с полезной закуской',
+      'Лёгкий перекус без готовки',
+      'Белковый перекус без готовки',
+      'Порционный перекус из корзины',
+      'Быстрый перекус с овощами',
+    ],
+  };
+  const types = ['breakfast', 'lunch', 'dinner', 'snack'];
+  const templates = Array.from({ length: targetCount }, (_, index) => {
+    const type = types[index % types.length];
+    const variant = Math.floor(index / types.length);
+    const products = type === 'breakfast'
+      ? [pick(proteins, variant), pick(vegetables, variant), pick(dairy, variant)]
+      : type === 'lunch'
+        ? [pick(proteins, variant), pick(grains, variant), pick(vegetables, variant + 1)]
+        : type === 'dinner'
+          ? [pick(proteins, variant + 1), pick(vegetables, variant), pick(grains, variant + 1)]
+          : [pick(dairy, variant), pick(snacks, variant), pick(vegetables, variant + 2)];
+    return {
+      name: mealNames[type][variant % mealNames[type].length],
+      products: products.filter(Boolean),
+      steps: type === 'snack'
+        ? ['Отмерьте порцию', 'Соедините компоненты', 'Оставшиеся продукты уберите на следующий приём пищи']
+        : ['Подготовьте продукты', quick ? 'Соберите или разогрейте компоненты' : 'Приготовьте компоненты выбранным способом', 'Добавьте овощи или зелень и подавайте'],
+      type,
+    };
+  });
 
   return templates
     .filter((recipe) => recipe.products.length)
@@ -517,7 +556,8 @@ function generateFallbackRecipes(preferences, cart) {
 
 export function generateMealPlan(preferences, cart, recipes) {
   const days = Number(preferences.days || 5);
-  const fallbackRecipes = generateFallbackRecipes(preferences, cart);
+  const requiredMeals = days * 4;
+  const fallbackRecipes = generateFallbackRecipes(preferences, cart, requiredMeals);
   const availableRecipes = [...(recipes || []), ...fallbackRecipes]
     .filter((recipe, index, all) => {
       const key = String(recipe.id || recipe.name).trim().toLowerCase();
@@ -526,28 +566,9 @@ export function generateMealPlan(preferences, cart, recipes) {
       )) === index;
     });
   const mealTypes = ['breakfast', 'lunch', 'dinner', 'snack'];
-  const previousRecipeByMeal = new Map();
-
   return Array.from({ length: days }, (_, dayIndex) => {
-    const usedToday = new Set();
     const meals = mealTypes.map((type, mealIndex) => {
-      const stride = Math.max(1, Math.ceil(availableRecipes.length / mealTypes.length));
-      const startIndex = (dayIndex + mealIndex * stride) % availableRecipes.length;
-      const previousKey = previousRecipeByMeal.get(type);
-      let recipe = availableRecipes[startIndex];
-
-      for (let offset = 0; offset < availableRecipes.length; offset += 1) {
-        const candidate = availableRecipes[(startIndex + offset) % availableRecipes.length];
-        const candidateKey = String(candidate.id || candidate.name).trim().toLowerCase();
-        if (!usedToday.has(candidateKey) && candidateKey !== previousKey) {
-          recipe = candidate;
-          break;
-        }
-      }
-
-      const recipeKey = String(recipe.id || recipe.name).trim().toLowerCase();
-      usedToday.add(recipeKey);
-      previousRecipeByMeal.set(type, recipeKey);
+      const recipe = availableRecipes[dayIndex * mealTypes.length + mealIndex];
 
       return {
         type,

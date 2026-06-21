@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { Target, AlertCircle, Wallet, Heart, HeartOff, Link2, FlaskConical } from 'lucide-react';
+import { Target, AlertCircle, Wallet, Link2, FlaskConical } from 'lucide-react';
 import { useAppState } from '../hooks/useAppState';
 
 const goalLabels = { energy: 'Больше энергии', weight_loss: 'Похудение', sugar_control: 'Контроль сахара', sport: 'Спорт и восстановление', healthy: 'Просто здоровая корзина', custom: 'Своя цель' };
@@ -13,8 +13,6 @@ export default function ProfileScreen() {
     { icon: Target, label: 'Цель', value: goalLabels[state.goal] || 'Не выбрана' },
     { icon: AlertCircle, label: 'Ограничения', value: (state.restrictions || []).map(r => restrictionLabels[r]).join(', ') || 'Нет' },
     { icon: Wallet, label: 'Бюджет', value: budgetLabels[state.budget] || 'Не указан' },
-    { icon: Heart, label: 'Любимые продукты', value: 'Авокадо, гречка, индейка' },
-    { icon: HeartOff, label: 'Нелюбимые продукты', value: 'Не указаны' },
     { icon: Link2, label: 'Связь с HealthOS', value: 'Не подключено' },
     { icon: FlaskConical, label: 'Анализы', value: 'Не загружены' },
   ];

@@ -420,15 +420,36 @@ function recipeProductNames(recipe, cart) {
     .slice(0, 5);
 }
 
+function inferRecipeType(recipe) {
+  const text = [
+    recipe.name,
+    recipe.description,
+    ...(recipe.categories || []),
+  ].filter(Boolean).join(' ').toLowerCase();
+
+  if (/завтрак|каша|омлет|скрэмбл|сырник|гранол|панкейк|блин|тост/.test(text)) {
+    return 'breakfast';
+  }
+  if (/перекус|закуск|смузи|маффин|десерт|печень|батончик|хумус|йогурт|творог/.test(text)) {
+    return 'snack';
+  }
+  if (/суп|борщ|окрош|щи|солянк|обед/.test(text)) {
+    return 'lunch';
+  }
+  return Number(recipe.id || 0) % 2 === 0 ? 'lunch' : 'dinner';
+}
+
 function normalizeMcpRecipe(recipe, cart, context) {
   const productNamesInCart = recipeProductNames(recipe, cart);
+  const type = inferRecipeType(recipe);
   return {
     ...recipe,
+    type,
     productNames: productNamesInCart.length
       ? productNamesInCart
       : recipe.ingredients.slice(0, 5).map((ingredient) => `${ingredient.name} — ${ingredient.quantity}`),
     products: cart.filter((product) => productNamesInCart.includes(product.name)).map((product) => product.id),
-    tags: [context.focus, recipe.complexity || 'рецепт ВкусВилла'],
+    tags: [context.focus, type === 'breakfast' ? 'завтрак' : type === 'snack' ? 'перекус' : 'основное блюдо'],
     why: `Реальный рецепт ВкусВилла под цель «${context.focus}». Совпадает с ${recipeMatchesCart(recipe, cart)} ингредиентами текущей корзины.`,
   };
 }
@@ -537,15 +558,25 @@ function generateFallbackRecipes(preferences, cart, targetCount = Number(prefere
     .map((recipe, index) => {
       const proteinValue = recipe.products.reduce((sum, product) => sum + (product.protein || 0), 0);
       const kcalValue = recipe.products.reduce((sum, product) => sum + (product.kcal || 0), 0);
+      const fatValue = recipe.products.reduce((sum, product) => sum + (product.fat || 0), 0);
+      const carbsValue = recipe.products.reduce((sum, product) => sum + (product.carbs || 0), 0);
+      const typeLabel = recipe.type === 'breakfast'
+        ? 'завтрак'
+        : recipe.type === 'lunch'
+          ? 'обед'
+          : recipe.type === 'dinner'
+            ? 'ужин'
+            : 'перекус';
       return {
         id: `${preferences.goal || 'healthy'}-${recipe.type}-${index}`,
+        type: recipe.type,
         name: recipe.name,
         time: recipe.type === 'snack' ? '3–5 мин' : cookingTime,
         kcal: kcalValue || (recipe.type === 'snack' ? 180 : 350),
         protein: proteinValue || 15,
-        fat: null,
-        carbs: null,
-        tags: [context.focus, quick ? 'быстро' : 'домашнее'],
+        fat: fatValue || null,
+        carbs: carbsValue || null,
+        tags: [context.focus, typeLabel],
         products: recipe.products.map((product) => product.id),
         productNames: recipe.products.map((product) => product.name),
         steps: recipe.steps,
@@ -566,9 +597,14 @@ export function generateMealPlan(preferences, cart, recipes) {
       )) === index;
     });
   const mealTypes = ['breakfast', 'lunch', 'dinner', 'snack'];
+  const recipesByType = Object.fromEntries(mealTypes.map((type) => [
+    type,
+    availableRecipes.filter((recipe) => recipe.type === type),
+  ]));
+
   return Array.from({ length: days }, (_, dayIndex) => {
-    const meals = mealTypes.map((type, mealIndex) => {
-      const recipe = availableRecipes[dayIndex * mealTypes.length + mealIndex];
+    const meals = mealTypes.map((type) => {
+      const recipe = recipesByType[type][dayIndex];
 
       return {
         type,
